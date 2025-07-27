@@ -6,22 +6,31 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import requests
+from dotenv import load_dotenv
+
+
+load_dotenv()
+API_KEY = os.getenv('OPENWEATHER_API_KEY')
 
 # Automatically add the 'lib' directory relative to the script's location
 script_dir = os.path.dirname(os.path.abspath(__file__))
-lib_path = os.path.join(script_dir, 'lib')
+# lib_path = os.path.join(script_dir, 'lib')
+lib_path = "/home/nickpi/projects/weather_display/e-Paper/RaspberryPi_JetsonNano/python/lib"
 sys.path.append(lib_path)
 from waveshare_epd import epd7in5_V2
 epd = epd7in5_V2.EPD()
 
 # User defined configuration
-API_KEY = 'XXXXXXXX'  # Your API key for openweathermap.com
+# API_KEY = 'XXXXXXXX'  # Your API key for openweathermap.com
 LOCATION = 'XXXXXXXX'  # Name of location
 LATITUDE = 'XXXXXXXX'  # Latitude
 LONGITUDE = 'XXXXXXXX'  # Longitude
 UNITS = 'imperial' # imperial or metric
 CSV_OPTION = True # if csv_option == True, a weather data will be appended to 'record.csv'
 TRASH_DAYS = [2]  # 0 = Monday, 6 = Sunday; Multiple days can be passed as a list
+
+if not API_KEY:
+    raise RuntimeError("OPENWEATHER_API_KEY is missing from .env file")
 
 BASE_URL = f'https://api.openweathermap.org/data/3.0/onecall'
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'font')
