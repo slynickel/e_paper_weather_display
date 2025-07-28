@@ -1,4 +1,14 @@
+# Edits
 
+From https://github.com/AbnormalDistributions/e_paper_weather_display/issues/33
+
+* Need to run `sudo raspi-config`
+    * Then `Choose Interfacing Options -> SPI -> Yes Enable SPI interface`
+* `sudo apt install python3-pillow python3-requests python3-pil`
+* Somewhere `git clone https://github.com/waveshare/e-Paper.git`
+   * Then in weather.py replace: `lib_path = os.path.join(script_dir, 'lib')`
+   * With: `lib_path = "/home/pi/_e-Paper/RaspberryPi_JetsonNano/python/lib" # Set according to your git download`
+* Run with: `python weather.py`
 
 # E-paper Weather Display
 
