@@ -108,6 +108,9 @@ def process_weather_data(data):
     try:
         current = data['current']
         daily = data['daily'][0]
+        alerts = data.get("alerts", [])
+        alert_count = len(alerts)
+        event_names = ", ".join(alert["event"] for alert in alerts)
         weather_data = {
             "temp_current": current['temp'],
             "feels_like": current['feels_like'],
@@ -118,6 +121,8 @@ def process_weather_data(data):
             "temp_max": daily['temp']['max'],
             "temp_min": daily['temp']['min'],
             "precip_percent": daily['pop'] * 100,
+            "alert_count": alert_count,
+            "alert_names": event_names,
         }
         logging.info("Weather data processed successfully.")
         return weather_data
@@ -193,6 +198,17 @@ def generate_display_image(weather_data):
         if weekday in TRASH_DAYS:
             draw.rectangle((345, 13, 705, 55), fill=COLORS['black'])
             draw.text((355, 15), 'TAKE OUT TRASH TODAY!', font=font30, fill=COLORS['white'])
+
+        if weather_data['alert_count'] > 0:
+            alerts = weather_data['alert_names']
+            alert_count = weather_data['alert_count'] 
+            draw.rectangle((345, 13, 705, 55), fill=COLORS['black'])
+            # Add the count if more than one alert
+            if alert_count > 1:
+                alertString = f"({alert_count}) {alerts}"
+            else:
+                alertString = alerts
+            draw.text((355, 15), alertString, font=font30, fill=COLORS['white'])
         
         logging.info("Display image generated successfully.")
         return template
