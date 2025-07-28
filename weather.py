@@ -6,49 +6,45 @@ from logging.handlers import RotatingFileHandler
 from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import requests
+import json
 from dotenv import load_dotenv
 
-
 load_dotenv()
-API_KEY = os.getenv('OPENWEATHER_API_KEY')
-
-# Automatically add the 'lib' directory relative to the script's location
-script_dir = os.path.dirname(os.path.abspath(__file__))
-# lib_path = os.path.join(script_dir, 'lib')
-lib_path = "/home/nickpi/projects/weather_display/e-Paper/RaspberryPi_JetsonNano/python/lib"
-sys.path.append(lib_path)
-from waveshare_epd import epd7in5_V2
-epd = epd7in5_V2.EPD()
 
 # User defined configuration
-# API_KEY = 'XXXXXXXX'  # Your API key for openweathermap.com
-LOCATION = 'XXXXXXXX'  # Name of location
-LATITUDE = 'XXXXXXXX'  # Latitude
-LONGITUDE = 'XXXXXXXX'  # Longitude
-UNITS = 'imperial' # imperial or metric
-CSV_OPTION = True # if csv_option == True, a weather data will be appended to 'record.csv'
-TRASH_DAYS = [2]  # 0 = Monday, 6 = Sunday; Multiple days can be passed as a list
+# Location of: git clone https://github.com/waveshare/e-Paper.git then append "/RaspberryPi_JetsonNano/python/lib"
+lib_path = os.getenv('lib_path') 
 
-if not API_KEY:
-    raise RuntimeError("OPENWEATHER_API_KEY is missing from .env file")
+# Used when you want to test locally, will simply output the picture it would have displayed
+UPDATE_DISPLAY=os.getenv('UPDATE_DISPLAY')
+
+API_KEY = os.getenv('OPENWEATHER_API_KEY') # Your API key for openweathermap.com
+LOCATION = os.getenv('LOCATION') # Name of location
+LATITUDE = os.getenv('LATITUDE')
+LONGITUDE = os.getenv('LONGITUDE')
+UNITS = os.getenv('UNITS') # imperial or metric
+
+CSV_RECORD_HISTORY = True # if CSV_RECORD_HISTORY == True, a weather data will be appended to 'record.csv'
+CSV_RECORD_FILE = os.getenv('CSV_RECORD_FILE')
+LOG_FILE_LOCATION = os.getenv('LOG_FILE_LOCATION')
+
+trash_days_str = os.getenv('TRASH_DAYS', '')  # 0 = Monday, 6 = Sunday; Multiple days can be passed as comma delimited list TRASH_DAYS=2,5
+TRASH_DAYS = [int(day.strip()) for day in trash_days_str.split(',') if day.strip().isdigit()]
+
 
 BASE_URL = f'https://api.openweathermap.org/data/3.0/onecall'
 FONT_DIR = os.path.join(os.path.dirname(__file__), 'font')
 PIC_DIR = os.path.join(os.path.dirname(__file__), 'pic')
 ICON_DIR = os.path.join(PIC_DIR, 'icon')
 
-# Initialize display
-epd = epd7in5_V2.EPD()
-epd.init()
-epd.Clear()
-
 # Logging configuration for both file and console
-LOG_FILE = 'weather_display.log'
+if not LOG_FILE_LOCATION:
+    LOG_FILE_LOCATION = 'weather_display.log'
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
 # Use RotatingFileHandler for log rotation
-file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=3)  # 1MB file size, 3 backups
+file_handler = RotatingFileHandler(LOG_FILE_LOCATION, maxBytes=1_000_000, backupCount=3)  # 1MB file size, 3 backups
 file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
 logger.addHandler(file_handler)
 
@@ -72,11 +68,37 @@ COLORS = {'black': 'rgb(0,0,0)', 'white': 'rgb(255,255,255)', 'grey': 'rgb(235,2
 # Fetch weather data
 def fetch_weather_data():
     url = f"{BASE_URL}?lat={LATITUDE}&lon={LONGITUDE}&units={UNITS}&appid={API_KEY}"
+
+    # Environment-based flags
+    read_debug_file = os.getenv('WEATHER_READ_DEBUG_JSON', 'False') == 'True'
+    write_debug_file = os.getenv('WEATHER_WRITE_DEBUG_JSON', 'False') == 'True'
+    debug_file_path = 'weather_debug.json'
+
+    if read_debug_file:
+        try:
+            with open(debug_file_path, 'r') as f:
+                logging.info("Reading weather data from debug JSON file.")
+                return json.load(f)
+        except Exception as e:
+            logging.error(f"Failed to read debug JSON file: {e}")
+            raise
+
     try:
         response = requests.get(url)
         response.raise_for_status()
         logging.info("Weather data fetched successfully.")
-        return response.json()
+        data = response.json()
+
+        if write_debug_file:
+            try:
+                with open(debug_file_path, 'w') as f:
+                    json.dump(data, f, indent=2)
+                    logging.info("Weather data written to debug JSON file.")
+            except Exception as e:
+                logging.warning(f"Failed to write debug data: {e}")
+
+        return data
+
     except requests.RequestException as e:
         logging.error(f"Failed to fetch weather data: {e}")
         raise
@@ -105,22 +127,40 @@ def process_weather_data(data):
 
 # Save weather data to CSV
 def save_to_csv(weather_data):
-    if not CSV_OPTION:
+    if not CSV_RECORD_HISTORY:
         return
+    filename = CSV_RECORD_FILE
+    file_exists = os.path.exists(filename)
+
+    now = datetime.now()
+    year = now.strftime('%Y')
+    month = now.strftime('%m')
+    date = now.strftime('%d')
+    time = now.strftime('%H:%M')
+
+    header = [
+        "YEAR", "MONTH", "DATE", "TIME", "LOCATION",
+        "TEMP_CURRENT", "HEAT_INDEX", "TEMP_MAX", "TEMP_MIN",
+        "HUMIDITY", "DAILY_PRECIP_PROB", "WIND_SPEED(MPH)"
+    ]
+
+    row = [
+        year, month, date, time, LOCATION,
+        weather_data["temp_current"],
+        weather_data["feels_like"],
+        weather_data["temp_max"],
+        weather_data["temp_min"],
+        weather_data["humidity"],
+        weather_data["precip_percent"],
+        weather_data["wind"]
+    ]
+
     try:
-        with open('records.csv', 'a', newline='') as csv_file:
+        with open(filename, 'a', newline='') as csv_file:
             writer = csv.writer(csv_file)
-            writer.writerow([
-                datetime.now().strftime('%Y-%m-%d %H:%M'),
-                LOCATION,
-                weather_data["temp_current"],
-                weather_data["feels_like"],
-                weather_data["temp_max"],
-                weather_data["temp_min"],
-                weather_data["humidity"],
-                weather_data["precip_percent"],
-                weather_data["wind"]
-            ])
+            if not file_exists:
+                writer.writerow(header)
+            writer.writerow(row)
         logging.info("Weather data appended to CSV.")
     except IOError as e:
         logging.error(f"Failed to save data to CSV: {e}")
@@ -162,6 +202,17 @@ def generate_display_image(weather_data):
 
 # Display image on screen
 def display_image(image):
+    # Initialize display
+    try:
+        sys.path.append(lib_path)
+        from waveshare_epd import epd7in5_V2
+        epd = epd7in5_V2.EPD()
+        epd.init()
+        epd.Clear()
+    except Exception as e:
+        logging.error(f"Initializing display: {e}")
+        raise
+
     try:
         h_image = Image.new('1', (epd.width, epd.height), 255)
         h_image.paste(image, (0, 0))
@@ -171,6 +222,15 @@ def display_image(image):
         logging.error(f"Failed to display image: {e}")
         raise
 
+def debug_output_image(image):
+    try:
+        outImage = Image.new('1', (800,480), 255)
+        outImage.paste(image, (0, 0))
+        outImage.save('test.jpg')
+    except Exception as e:
+        logging.error(f"Failed output: {e}")
+        raise
+
 # Main function
 def main():
     try:
@@ -178,7 +238,10 @@ def main():
         weather_data = process_weather_data(data)
         save_to_csv(weather_data)
         image = generate_display_image(weather_data)
-        display_image(image)
+        if UPDATE_DISPLAY == 'True':
+            display_image(image)
+            return
+        debug_output_image(image)
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
 

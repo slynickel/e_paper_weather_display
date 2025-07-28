@@ -1,2 +1,6 @@
 .DS_Store
 .env
+records.csv
+weather_display.log
+test.jpg
+weather_debug.json
