@@ -170,13 +170,13 @@ def save_to_csv(weather_data):
     time = now.strftime('%H:%M')
 
     header = [
-        "YEAR", "MONTH", "DATE", "TIME", "LOCATION",
+        "YEAR", "MONTH", "DATE", "TIME",
         "TEMP_CURRENT", "HEAT_INDEX", "TEMP_MAX", "TEMP_MIN",
         "HUMIDITY", "DAILY_PRECIP_PROB", "WIND_SPEED(MPH)"
     ]
 
     row = [
-        year, month, date, time, LOCATION,
+        year, month, date, time,
         weather_data["temp_current"],
         weather_data["feels_like"],
         weather_data["temp_max"],
