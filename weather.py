@@ -11,7 +11,6 @@ from dotenv import dotenv_values
 # Define defaults and required keys
 DEFAULTS = {
     "OPENWEATHER_API_KEY": None,              # Required from openweathermap.org
-    "LOCATION": None,                         # Required
     "LATITUDE": None,                         # Required
     "LONGITUDE": None,                        # Required
     "UNITS": "imperial",                      # Optional: imperial|metric (default imperial)
@@ -43,7 +42,6 @@ def load_config():
 config = load_config()
 
 API_KEY = config["OPENWEATHER_API_KEY"]
-LOCATION = config["LOCATION"] 
 LATITUDE = config["LATITUDE"]
 LONGITUDE = config["LONGITUDE"]
 UNITS = config["UNITS"]
