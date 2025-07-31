@@ -4,3 +4,5 @@ records.csv
 weather_display.log
 test.jpg
 weather_debug.json
+__pycache__/
+*.py[cod]
