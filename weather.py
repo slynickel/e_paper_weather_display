@@ -1,5 +1,4 @@
 import os
-import sys
 import csv
 import logging
 from logging.handlers import RotatingFileHandler
@@ -10,10 +9,6 @@ import json
 from dotenv import load_dotenv
 
 load_dotenv()
-
-# User defined configuration
-# Location of: git clone https://github.com/waveshare/e-Paper.git then append "/RaspberryPi_JetsonNano/python/lib"
-lib_path = os.getenv('lib_path') 
 
 # Used when you want to test locally, will simply output the picture it would have displayed
 UPDATE_DISPLAY=os.getenv('UPDATE_DISPLAY')
@@ -220,8 +215,7 @@ def generate_display_image(weather_data):
 def display_image(image):
     # Initialize display
     try:
-        sys.path.append(lib_path)
-        from waveshare_epd import epd7in5_V2
+        from lib.waveshare_epd import epd7in5_V2
         epd = epd7in5_V2.EPD()
         epd.init()
         epd.Clear()

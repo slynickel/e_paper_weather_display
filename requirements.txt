@@ -1,0 +1,6 @@
+# Requirement versions are minimums that worked as of 20250730 on a rasberrypi 3
+gpiozero>=2.0.1
+Pillow>=9.4.0
+python-dotenv>=0.21.0
+Requests>=2.28.1
+spidev>=3.5
