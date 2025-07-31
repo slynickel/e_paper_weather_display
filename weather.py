@@ -6,25 +6,58 @@ from datetime import datetime
 from PIL import Image, ImageDraw, ImageFont
 import requests
 import json
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
-load_dotenv()
+# Define defaults and required keys
+DEFAULTS = {
+    "OPENWEATHER_API_KEY": None,              # Required from openweathermap.org
+    "LOCATION": None,                         # Required
+    "LATITUDE": None,                         # Required
+    "LONGITUDE": None,                        # Required
+    "UNITS": "imperial",                      # Optional: imperial|metric (default imperial)
 
-# Used when you want to test locally, will simply output the picture it would have displayed
-UPDATE_DISPLAY=os.getenv('UPDATE_DISPLAY')
+    "CSV_RECORD_HISTORY": "True",             # Optional: save weather records to CSV
+    "CSV_RECORD_FILE": "records.csv",         # Optional: records file name, default is the current directory records.csv
+    "LOG_FILE_LOCATION": "weather_display.log",  # Optional: log file path
+    "TRASH_DAYS": "",                         # Optional: comma-separated weekday values if empty string will not use "trash day" logic
+                                              # 0 = Monday, 6 = Sunday; Multiple days can be passed as comma delimited list TRASH_DAYS=2,5
 
-API_KEY = os.getenv('OPENWEATHER_API_KEY') # Your API key for openweathermap.com
-LOCATION = os.getenv('LOCATION') # Name of location
-LATITUDE = os.getenv('LATITUDE')
-LONGITUDE = os.getenv('LONGITUDE')
-UNITS = os.getenv('UNITS') # imperial or metric
+    "UPDATE_DISPLAY": "True",                 # Optional: actually update the display, when false it will output a test.jpg of what the image would be.
+                                              # This can be used to test on devices that aren't your raspberry pi.
+    "WEATHER_READ_DEBUG_JSON": "False",       # Optional: read debug file "weather_debug.json" rather than calling the weather API
+    "WEATHER_WRITE_DEBUG_JSON": "False"       # Optional: write debug file write the "weather_debug.json" files for caching and testing other functionality
+}
 
-CSV_RECORD_HISTORY = True # if CSV_RECORD_HISTORY == True, a weather data will be appended to 'record.csv'
-CSV_RECORD_FILE = os.getenv('CSV_RECORD_FILE')
-LOG_FILE_LOCATION = os.getenv('LOG_FILE_LOCATION')
+def load_config(): 
+    env_file = dotenv_values(".env")
+    config = {**DEFAULTS, **env_file} # could add **os.environ at the end if you want to actually use environment variables. I would rather not
 
-trash_days_str = os.getenv('TRASH_DAYS', '')  # 0 = Monday, 6 = Sunday; Multiple days can be passed as comma delimited list TRASH_DAYS=2,5
+    REQUIRED_KEYS = [key for key, val in DEFAULTS.items() if val is None]
+
+    # Check for missing required keys
+    missing = [key for key in REQUIRED_KEYS if not config.get(key)]
+    if missing:
+        raise ValueError(f"Missing required config values: {', '.join(missing)}")
+    return config
+
+config = load_config()
+
+API_KEY = config["OPENWEATHER_API_KEY"]
+LOCATION = config["LOCATION"] 
+LATITUDE = config["LATITUDE"]
+LONGITUDE = config["LONGITUDE"]
+UNITS = config["UNITS"]
+
+CSV_RECORD_HISTORY = config["CSV_RECORD_HISTORY"].lower() == "true"
+CSV_RECORD_FILE = config["CSV_RECORD_FILE"]
+LOG_FILE_LOCATION = config["LOG_FILE_LOCATION"]
+
+trash_days_str = config["TRASH_DAYS"] 
 TRASH_DAYS = [int(day.strip()) for day in trash_days_str.split(',') if day.strip().isdigit()]
+
+UPDATE_DISPLAY=config["UPDATE_DISPLAY"].lower() == "true"
+WEATHER_READ_DEBUG_JSON = config["WEATHER_READ_DEBUG_JSON"].lower() == "true"
+WEATHER_WRITE_DEBUG_JSON = config["WEATHER_WRITE_DEBUG_JSON"].lower() == 'true'
 
 
 BASE_URL = f'https://api.openweathermap.org/data/3.0/onecall'
@@ -62,14 +95,14 @@ COLORS = {'black': 'rgb(0,0,0)', 'white': 'rgb(255,255,255)', 'grey': 'rgb(235,2
 
 # Fetch weather data
 def fetch_weather_data():
-    url = f"{BASE_URL}?lat={LATITUDE}&lon={LONGITUDE}&units={UNITS}&appid={API_KEY}"
+    url = f"{BASE_URL}?lat={LATITUDE}&lon={LONGITUDE}&units={UNITS}&appid={API_KEY}&exclude=minutely,hourly"
 
     # Environment-based flags
-    read_debug_file = os.getenv('WEATHER_READ_DEBUG_JSON', 'False') == 'True'
-    write_debug_file = os.getenv('WEATHER_WRITE_DEBUG_JSON', 'False') == 'True'
+    WEATHER_READ_DEBUG_JSON = os.getenv('WEATHER_READ_DEBUG_JSON', 'False') == 'True'
+    WEATHER_WRITE_DEBUG_JSON = os.getenv('WEATHER_WRITE_DEBUG_JSON', 'False') == 'True'
     debug_file_path = 'weather_debug.json'
 
-    if read_debug_file:
+    if WEATHER_READ_DEBUG_JSON:
         try:
             with open(debug_file_path, 'r') as f:
                 logging.info("Reading weather data from debug JSON file.")
@@ -84,7 +117,7 @@ def fetch_weather_data():
         logging.info("Weather data fetched successfully.")
         data = response.json()
 
-        if write_debug_file:
+        if WEATHER_WRITE_DEBUG_JSON:
             try:
                 with open(debug_file_path, 'w') as f:
                     json.dump(data, f, indent=2)
@@ -188,12 +221,10 @@ def generate_display_image(weather_data):
         current_time = datetime.now().strftime('%H:%M')
         draw.text((627, 375), current_time, font=font60, fill=COLORS['white'])
 
-        # Trash reminder based on TRASH_DAYS config
-        weekday = datetime.today().weekday()
-        if weekday in TRASH_DAYS:
-            draw.rectangle((345, 13, 705, 55), fill=COLORS['black'])
-            draw.text((355, 15), 'TAKE OUT TRASH TODAY!', font=font30, fill=COLORS['white'])
 
+        # If there's weather alert it will trump a Trash day alert
+        # TODO make this logic better either remove trash day or move it elsewhere
+        # TODO dynamically scale box size to center text 
         if weather_data['alert_count'] > 0:
             alerts = weather_data['alert_names']
             alert_count = weather_data['alert_count'] 
@@ -204,7 +235,13 @@ def generate_display_image(weather_data):
             else:
                 alertString = alerts
             draw.text((355, 15), alertString, font=font30, fill=COLORS['white'])
-        
+        else:
+            # Trash reminder based on TRASH_DAYS config
+            weekday = datetime.today().weekday()
+            if weekday in TRASH_DAYS:
+                draw.rectangle((345, 13, 705, 55), fill=COLORS['black'])
+                draw.text((355, 15), 'TAKE OUT TRASH TODAY!', font=font30, fill=COLORS['white'])
+
         logging.info("Display image generated successfully.")
         return template
     except Exception as e:
@@ -248,9 +285,10 @@ def main():
         weather_data = process_weather_data(data)
         save_to_csv(weather_data)
         image = generate_display_image(weather_data)
-        if UPDATE_DISPLAY == 'True':
+        if UPDATE_DISPLAY:
             display_image(image)
             return
+        logging.info("Image not being displayed, only created JPG of image to create")
         debug_output_image(image)
     except Exception as e:
         logging.error(f"An unexpected error occurred: {e}")
