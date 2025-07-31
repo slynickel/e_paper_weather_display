@@ -28,7 +28,9 @@ DEFAULTS = {
 }
 
 def load_config(): 
-    env_file = dotenv_values(".env")
+    # Get absolute path to the .env file relative to this script
+    ENV_PATH = os.path.join(os.path.dirname(__file__), ".env")
+    env_file = dotenv_values(ENV_PATH)
     config = {**DEFAULTS, **env_file} # could add **os.environ at the end if you want to actually use environment variables. I would rather not
 
     REQUIRED_KEYS = [key for key, val in DEFAULTS.items() if val is None]
